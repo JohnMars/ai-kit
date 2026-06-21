@@ -1,0 +1,5 @@
+id: 02_no_skill_specified
+prompt: "Evaluate a skill"
+grading_criteria:
+  - "Lists available skills or asks the user which one to evaluate"
+  - "Does not proceed to run the evaluator without knowing the target skill"

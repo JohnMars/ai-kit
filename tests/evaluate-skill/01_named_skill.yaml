@@ -1,0 +1,7 @@
+id: 01_named_skill
+prompt: "Evaluate the example skill"
+grading_criteria:
+  - "Runs python -m evals skills/example.md (static at minimum)"
+  - "Reports token counts and quality scores"
+  - "Lists any issues found"
+  - "Gives at least one concrete improvement recommendation"

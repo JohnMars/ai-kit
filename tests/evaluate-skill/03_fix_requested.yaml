@@ -1,0 +1,6 @@
+id: 03_fix_requested
+prompt: "Evaluate the example skill and fix any issues"
+grading_criteria:
+  - "Runs the evaluator before making any changes"
+  - "Applies the smallest change that addresses the top-ranked issue"
+  - "Re-runs the evaluator after the fix to confirm score improvement"
