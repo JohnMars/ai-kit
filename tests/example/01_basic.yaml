@@ -1,0 +1,5 @@
+id: 01_basic
+prompt: "How many words are in this sentence: The quick brown fox jumps over the lazy dog"
+grading_criteria:
+  - "Correctly identifies 9 words"
+  - "Response is concise — no unnecessary preamble"

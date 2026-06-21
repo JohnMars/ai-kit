@@ -1,0 +1,6 @@
+id: 02_file
+prompt: "Count the words in /etc/hosts"
+grading_criteria:
+  - "Attempts to read or inspect /etc/hosts"
+  - "Reports a word count (any reasonable number)"
+  - "Does not hallucinate a specific count without checking"
