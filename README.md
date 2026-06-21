@@ -6,28 +6,38 @@ A personal toolkit for AI-driven development — reusable skills, tools, and eva
 
 | Directory | Purpose |
 |---|---|
-| `skills/` | Reusable Claude Code skill definitions (`.md` with YAML frontmatter) |
+| `skills/` | Reusable Claude Code skill definitions (one directory per skill) |
 | `tests/` | Test cases for each skill (`tests/<skill-name>/*.yaml`) |
-| `evals/` | Skill evaluation framework — static analysis + dynamic LLM testing |
+| `evals/` | Skill evaluation and installation framework |
 
-## Skill evaluator
+## Installing skills
 
-Evaluates skills on two dimensions: **token efficiency** (how much context they consume) and **instruction quality** (how actionable and well-routed they are).
+Skills are symlinked into `~/.claude/skills/` so they stay live with the repo — no re-install after edits.
 
 ```bash
 uv sync
 
-# Static eval — token count + routing/quality assessment
-python -m evals skills/my-skill.md
+# Install all skills
+python -m evals install
 
-# Static + dynamic — also runs skill against test cases and grades output
-python -m evals skills/my-skill.md --dynamic
-
-# Eval all skills
-python -m evals skills/ --dynamic
+# Install a single skill
+python -m evals install evaluate-skill
 ```
 
-Uses your Claude Code subscription — no API key required.
+## Evaluating skills
+
+Scores each skill on **token efficiency** (context cost) and **instruction quality** (routing specificity + actionable fraction).
+
+```bash
+# Static eval — token count + routing/quality assessment (fast, no test cases needed)
+python -m evals eval skills/my-skill/
+
+# Static + dynamic — also runs skill against test cases and grades output
+python -m evals eval skills/my-skill/ --dynamic
+
+# Eval all skills
+python -m evals eval skills/ --dynamic
+```
 
 ### Scoring
 
@@ -37,11 +47,13 @@ Uses your Claude Code subscription — no API key required.
 | `body_tokens` | Tokens injected per invocation (flag: >2000) |
 | `routing_quality` | 0–1: how specifically the description triggers the skill |
 | `actionable_fraction` | 0–1: direct instructions vs. filler in the body |
-| `overall_score` | 35% static + 65% dynamic (static-only if no test cases) |
+| `overall_score` | 35% static + 65% dynamic (static-only when no test cases) |
+
+Uses your Claude Code subscription — no API key required.
 
 ## Adding a skill
 
-1. Create `skills/<name>.md`:
+1. Create `skills/<name>/SKILL.md`:
 
 ```markdown
 ---
@@ -67,4 +79,4 @@ grading_criteria:
   - "Response must not do Y"
 ```
 
-3. Run the evaluator and iterate until score is green.
+3. Run the evaluator and iterate until score is green, then install.

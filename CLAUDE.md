@@ -11,38 +11,44 @@ uv sync   # install dependencies — no API key needed, uses Claude Code subscri
 ## Commands
 
 ```bash
-# Static eval only (no API calls beyond token counting + quality assessment)
-python -m evals skills/my-skill.md
+# Static eval only
+python -m evals eval skills/my-skill/
 
-# Static + dynamic eval (runs skill against test cases via Claude API)
-python -m evals skills/my-skill.md --dynamic
+# Static + dynamic eval (runs skill against test cases)
+python -m evals eval skills/my-skill/ --dynamic
 
-# Eval all skills in the directory
-python -m evals skills/ --dynamic
+# Eval all skills
+python -m evals eval skills/ --dynamic
 
-# Custom test cases directory
-python -m evals skills/my-skill.md --dynamic --tests /path/to/tests
+# Install all skills to ~/.claude/skills/ (symlinks, stays in sync)
+python -m evals install
+
+# Install a single skill
+python -m evals install my-skill
+
+# Install by copying instead of symlinking
+python -m evals install --copy
 ```
 
 ## Architecture
 
 ```
 ai-kit/
-├── skills/          # Skill definitions (.md with YAML frontmatter)
-├── tests/           # Test cases per skill (tests/<skill-name>/*.yaml)
+├── skills/<name>/   # Skill directories — each contains SKILL.md (Claude Code format)
+├── tests/<name>/    # Test cases per skill (*.yaml)
 └── evals/           # Evaluation framework (Python package)
     ├── claude_client.py  # Wrapper around `claude -p` subprocess (subscription auth)
     ├── models.py         # Pydantic models: Skill, TestCase, StaticResult, DynamicResult, EvalReport
-    ├── parser.py         # Parse skill .md files and test .yaml files
+    ├── parser.py         # Parse SKILL.md files and test .yaml files
     ├── static_eval.py    # Phase 1: token counting + LLM quality assessment
     ├── dynamic_eval.py   # Phase 2: run skill against test cases + LLM judge
     ├── report.py         # Rich terminal report
-    └── __main__.py       # Typer CLI entry point
+    └── __main__.py       # Typer CLI — subcommands: eval, install
 ```
 
 ## Skill format
 
-Skills are `.md` files with YAML frontmatter:
+Each skill is a directory `skills/<name>/` containing `SKILL.md`:
 
 ```markdown
 ---
@@ -57,6 +63,8 @@ tools:
 
 Numbered, imperative instructions only. No background prose.
 ```
+
+The directory can also contain a `references/` subdirectory for supplementary files the skill can load on demand.
 
 ## Test case format
 

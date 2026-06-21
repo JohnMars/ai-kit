@@ -10,7 +10,7 @@ tools:
 ---
 
 1. Identify the target skill:
-   - If the user named a skill, resolve it to `skills/<name>.md`.
+   - If the user named a skill, resolve it to `skills/<name>/`.
    - If the user pointed at the current file, use that path.
    - If no skill is specified, list `skills/` and ask the user to pick one.
 
@@ -21,12 +21,12 @@ tools:
 
 3. Run the static eval first (always):
    ```bash
-   python -m evals skills/<name>.md
+   python -m evals skills/<name>/
    ```
 
 4. If test cases exist, or if the user explicitly asks for dynamic eval, also run:
    ```bash
-   python -m evals skills/<name>.md --dynamic
+   python -m evals skills/<name>/ --dynamic
    ```
 
 5. Read the output and report:
