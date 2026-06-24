@@ -1,9 +1,10 @@
 ---
 name: compose-modifier-and-layout-style
 description: >
-  Use when writing or reviewing Jetpack Compose layout composables and modifier chains.
-  Triggered by: "modifier parameter", "modifier chain", "fillMaxWidth", "layout composable",
-  "no modifier param", "hardcoded layout", "conditional layout".
+  Use when writing or reviewing Jetpack Compose layout functions and modifier chains.
+  Triggered by: "Modifier parameter", "modifier chain", "Compose modifier",
+  "fillMaxWidth on composable", "Column modifier", "Row modifier", "Box modifier",
+  "missing modifier param", "Modifier.then", "Modifier order".
 tools:
   - Read
   - Edit
@@ -11,53 +12,56 @@ tools:
 
 ## Rules
 
-1. **Declare `modifier: Modifier = Modifier`** on every composable that emits layout — after required params, before trailing content lambdas. Name it exactly `modifier`.
+1. Declare `modifier: Modifier = Modifier` on every `@Composable` that emits layout — after required params, before trailing content lambdas. Use exactly the name `modifier`.
 
-2. **Apply the caller's modifier to the root first**, then append intrinsic modifiers:
+2. Apply the caller's modifier to the root element first, then append component-intrinsic modifiers:
    ```kotlin
+   // ✅ caller modifier first
    fun Avatar(url: String, modifier: Modifier = Modifier) {
-       Image(modifier = modifier.clip(CircleShape).size(48.dp), ...)  // ✅ caller first
+       Image(modifier = modifier.clip(CircleShape).size(48.dp), ...)
    }
-   // ❌ Wrong: modifier applied to a child, not root
-   // ❌ Wrong: modifier.then(Modifier.clip(...)) — caller is last, loses caller's sizing
+   // ❌ caller modifier last — loses caller's sizing intent
+   fun Avatar(url: String, modifier: Modifier = Modifier) {
+       Image(modifier = Modifier.clip(CircleShape).size(48.dp).then(modifier), ...)
+   }
    ```
 
-3. **Never hardcode layout decisions on the root** — let the caller decide `fillMaxWidth`, `padding`, `height`:
+3. Never hardcode sizing or spacing on the root — let callers decide `fillMaxWidth`, `padding`, `height`:
    ```kotlin
    Button(modifier = modifier.fillMaxWidth(), ...)  // ❌ forces fill on every caller
-   Button(modifier = modifier, ...)                  // ✅ caller adds .fillMaxWidth() if needed
+   Button(modifier = modifier, ...)                  // ✅
    ```
-   Exception: modifiers intrinsic to the component's identity (`.clip(CircleShape)` on an `Avatar`).
+   Exception: modifiers intrinsic to the component's identity (`.clip(CircleShape)` on `Avatar`).
 
-4. **Build modifier chains as one fluent `val`** — no stepwise `var` reassignment:
+4. Build modifier chains as a single fluent expression — never stepwise `var` reassignment:
    ```kotlin
    var m = Modifier; m = m.padding(16.dp); m = m.fillMaxSize()  // ❌
    val m = Modifier.padding(16.dp).fillMaxSize()                 // ✅
    ```
-   Conditionals stay on the chain: `.then(if (selected) Modifier.background(Color.Red) else Modifier)`.
+   Inline conditionals with `.then(if (selected) Modifier.background(Color.Red) else Modifier)`.
 
-5. **Format multiline when the chain has 3+ calls** — one call per line, indented under the value:
+5. Format chains with 3+ calls one-per-line:
    ```kotlin
-   modifier = modifier        // ✅
+   modifier = modifier
        .fillMaxSize()
        .padding(16.dp)
        .weight(1f)
    ```
 
-6. **Hoist single conditionals out of the layout** when the layout's only content is one `if`:
+6. Hoist a single `if` out of an otherwise-empty layout composable:
    ```kotlin
-   Column { if (show) { Text("A"); Text("B") } }   // ❌ layout always emitted
-   if (show) { Column { Text("A"); Text("B") } }    // ✅ layout only when needed
+   Column { if (show) { Text("A"); Text("B") } }  // ❌ Column always emitted
+   if (show) { Column { Text("A"); Text("B") } }   // ✅
    ```
-   Keep the layout as-is when it carries its own `modifier`, alignment, or arrangement args, or has siblings.
+   Keep the layout when it carries its own `modifier`, `arrangement`, `alignment`, or sibling content.
 
 ## Anti-patterns
 
 | Symptom | Fix |
 |---|---|
-| No `modifier` param on a layout composable | Add `modifier: Modifier = Modifier`, apply to root |
-| `modifier` accepted but not applied | Apply to root's `modifier` arg |
+| No `modifier` param on a layout `@Composable` | Add `modifier: Modifier = Modifier`, apply to root |
+| `modifier` accepted but not forwarded | Apply to root element's `modifier` argument |
 | `modifier` applied to a child, not the root | Move to outermost layout |
-| `modifier = Modifier.x().y().then(modifier)` — caller last | Reorder: `modifier = modifier.x().y()` |
-| `var m = Modifier` + reassignments | Fluent chain on a `val` |
-| `Column { if (cond) X() }` — no other content | Hoist the `if` outside |
+| `Modifier.x().y().then(modifier)` — caller last | `modifier.x().y()` — caller first |
+| `var m = Modifier` + reassignments | Fluent `val` chain |
+| `Column { if (cond) Content() }` sole content | Hoist `if` outside `Column` |

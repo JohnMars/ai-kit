@@ -1,30 +1,34 @@
 ---
 name: compose-state-holder-ui-split
 description: >
-  Use when structuring a Jetpack Compose screen to separate ViewModel state collection from
-  UI rendering. Triggered by: "screen composable", "ViewModel in composable", "preview not
-  working", "testable UI composable", "collect flow in composable", "collectAsStateWithLifecycle".
+  Use when structuring a Jetpack Compose screen with a ViewModel. Triggered by:
+  "screen composable with ViewModel", "collectAsStateWithLifecycle", "Compose preview
+  with ViewModel", "testable screen composable", "hiltViewModel in composable",
+  "separate state collection from UI Compose".
 tools:
   - Read
   - Edit
 ---
 
-## The split
+## Rules
 
-Every screen has two layers:
+1. Every screen has two composable overloads with the same name — a state-holder layer and a UI layer.
+2. The **state-holder composable** takes a `ViewModel` param, collects flows, and handles `UiEffect`. It is not directly previewable.
+3. The **UI composable** takes only plain `UiState` and `onEvent` — no `ViewModel`, no `Flow`, no coroutines. It must be `@Preview`-able.
+4. Use `collectAsStateWithLifecycle()` (not `collectAsState()`) — stops collection when the UI is not visible on Android.
+5. Pass a single `onEvent: (UiEvent) -> Unit` callback, not individual lambdas per action.
+6. Handle one-time effects with `LaunchedEffect(Unit) { viewModel.uiEffect.collect { ... } }` in the state-holder layer — never in the UI layer.
 
-- **State-holder composable** — connects to ViewModel, collects flows, handles navigation and `UiEffect`. Not directly previewable.
-- **UI composable** — receives plain `UiState` and callbacks. Previewable, testable, KMP-compatible.
+## Pattern
 
 ```kotlin
-// State-holder layer — same name, different signature
+// State-holder layer — connects ViewModel to UI
 @Composable
 fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-
     LaunchedEffect(Unit) {
         viewModel.uiEffect.collect { effect ->
             when (effect) {
@@ -32,37 +36,34 @@ fun ProfileScreen(
             }
         }
     }
-
     ProfileScreen(state = state, onEvent = viewModel::onEvent, modifier = modifier)
 }
 
-// UI layer — pure layout, no ViewModel reference
+// UI layer — layout only, no ViewModel
 @Composable
 fun ProfileScreen(
     state: ProfileUiState,
     onEvent: (ProfileUiEvent) -> Unit,
     modifier: Modifier = Modifier,
-) {
-    // layout only
-}
+) { /* layout */ }
 
-@Preview
-@Composable
+@Preview @Composable
 private fun ProfileScreenPreview() {
     ProfileScreen(state = ProfileUiState.preview(), onEvent = {})
 }
 ```
 
-## Rules
+## Anti-patterns
 
-1. The state-holder composable collects `StateFlow`/`SharedFlow`/`Channel`, reads from ViewModel, and handles one-time effects.
-2. The UI composable takes only plain data classes and callbacks — no `ViewModel` reference, no `Flow`, no coroutines.
-3. Every UI composable must be `@Preview`-able with a hardcoded or `preview()` state instance.
-4. On Android, use `collectAsStateWithLifecycle()` (not `collectAsState()`) to stop collection when the UI is not visible.
-5. Name both composables identically — the state-holder overload is the public entry point; the UI overload is the internal/testable surface.
-6. Pass a single `onEvent: (UiEvent) -> Unit` callback rather than individual lambdas per action (matches `android-mvvm`).
+| Mistake | Fix |
+|---|---|
+| `hiltViewModel()` inside the UI-layer composable | Move to state-holder layer only |
+| `collectAsState()` instead of `collectAsStateWithLifecycle()` | Replace on Android targets |
+| Individual `onClick`, `onDismiss` lambdas on the UI layer | Single `onEvent: (UiEvent) -> Unit` |
+| `UiEffect` collected in UI-layer composable | Move collection to state-holder layer |
+| No `@Preview` on the screen | UI-layer composable must have a preview |
 
 ## When NOT to apply
 
-- Tiny one-off composables with no ViewModel dependency and no preview need.
-- Design-system primitives (`Button`, `Card`) that have no state collection.
+- Composables with no ViewModel dependency.
+- Design-system components (`Button`, `Card`) — these have no state collection.

@@ -1,9 +1,10 @@
 ---
 name: compose-slot-api-pattern
 description: >
-  Use when designing or reviewing a reusable Jetpack Compose component whose visual
-  content varies by caller. Triggered by: "reusable component", "slot API", "content
-  parameter", "composable lambda param", "boolean flag", "shape variant".
+  Use when designing or reviewing a reusable Jetpack Compose component that accepts
+  variable content from callers. Triggered by: "slot API", "composable lambda parameter",
+  "@Composable () -> Unit parameter", "content lambda", "RowScope content",
+  "trailing composable", "XxxDefaults object", "optional content slot".
 tools:
   - Read
   - Edit
@@ -11,16 +12,16 @@ tools:
 
 ## Core rule
 
-Replace primitive content parameters (`title: String`, `icon: ImageVector`) with `@Composable () -> Unit` slots. The component describes structure; the caller provides content.
+Replace primitive content parameters (`title: String`, `icon: ImageVector`) with `@Composable () -> Unit` slots. The component owns structure; the caller owns content.
 
 ## Rules
 
-1. **Convert primitive content params to slots**:
+1. Replace primitive content params with composable slots:
    ```kotlin
-   // ❌ BAD — primitives lock content shape
+   // ❌ primitives lock content shape
    fun SettingsRow(title: String, leadingIcon: ImageVector?, subtitle: String?)
 
-   // ✅ GOOD — caller provides any content
+   // ✅ caller provides any content
    fun SettingsRow(
        headlineContent: @Composable () -> Unit,
        modifier: Modifier = Modifier,
@@ -30,32 +31,33 @@ Replace primitive content parameters (`title: String`, `icon: ImageVector`) with
    )
    ```
 
-2. **Replace boolean shape flags** (`showChevron`, `showSwitch`, `mode: Mode`) with a single nullable slot.
+2. Replace boolean shape flags (`showChevron: Boolean`, `mode: RowMode`) with a nullable `@Composable` slot — the caller passes `null` to omit, or provides content to show.
 
-3. **Use nullable slots with `null` default** for optional areas — lets the component omit spacing when absent:
+3. Use `null` default (not `{}`) for optional slots — lets the component skip layout and spacing when absent:
    ```kotlin
    leadingContent: (@Composable () -> Unit)? = null  // ✅ component branches on null
-   leadingContent: @Composable () -> Unit = {}        // ❌ component always allocates the slot
+   leadingContent: @Composable () -> Unit = {}        // ❌ always allocated, can't skip spacing
    ```
 
-4. **Add scope receivers** when the slot renders inside a layout scope:
+4. Add a scope receiver when the slot renders inside a layout scope:
    ```kotlin
-   actions: @Composable RowScope.() -> Unit = {}   // renders inside a Row
-   content: @Composable BoxScope.() -> Unit         // renders inside a Box
+   actions: @Composable RowScope.() -> Unit = {}   // inside a Row
+   content: @Composable BoxScope.() -> Unit         // inside a Box
    ```
 
-5. **Name slots** with `xxxContent` convention (`headlineContent`, `trailingContent`), matching Material 3. Use a bare noun (`title`, `actions`) only when the component name disambiguates.
+5. Name slots with the `xxxContent` convention (`headlineContent`, `trailingContent`), matching Material 3. Use a bare noun (`title`, `actions`) only when the component name disambiguates.
 
-6. **Put shared defaults in `XxxDefaults`**:
+6. Provide shared defaults in an `XxxDefaults` object:
    ```kotlin
    object SettingsRowDefaults {
        @Composable fun Chevron() = Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
    }
-   // Call site: trailingContent = { SettingsRowDefaults.Chevron() }
+   // Caller: trailingContent = { SettingsRowDefaults.Chevron() }
    ```
 
 ## When NOT to apply
 
-- True single-use composables (one call site, no plan to reuse).
-- Design-system primitives where every caller must look identical (`Heading2(text: String)`).
-- Boolean parameters that are constraints, not content (`Switch(checked: Boolean)`).
+- Single-use composables (one call site, not shared).
+- Design-system primitives where all callers must look identical (`Heading2(text: String)`).
+- Boolean parameters that are constraints, not content (`Switch(checked: Boolean, onCheckedChange: ...)`).
+- Components used in fewer than 3 places with no plans for reuse.

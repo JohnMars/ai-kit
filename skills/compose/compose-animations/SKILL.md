@@ -1,55 +1,54 @@
 ---
 name: compose-animations
 description: >
-  Use when implementing animations in Jetpack Compose. Triggered by: "animate",
-  "animation", "AnimatedVisibility", "transition", "fade", "slide", "expand",
-  "animateContentSize", "AnimatedContent", "Crossfade".
+  Use when implementing Jetpack Compose animations. Triggered by: "AnimatedVisibility",
+  "AnimatedContent", "Crossfade", "rememberTransition", "animate*AsState",
+  "animateContentSize", "Animatable", "AnimationSpec", "animateFloatAsState",
+  "animateDpAsState", "animateColorAsState".
 tools:
   - Read
   - Edit
 ---
 
-## Pick the smallest API
+## Pick the right API
 
 | Need | API |
 |---|---|
-| Show/hide a subtree with enter/exit; content removed after exit | `AnimatedVisibility` |
+| Show/hide a subtree; content unmounts after exit | `AnimatedVisibility` |
 | One property toward a target value | `animate*AsState` (`Float`, `Dp`, `Color`, `Offset`, …) |
-| Several values driven by one piece of state | `rememberTransition` + child animations |
+| Several values driven by one enum/state | `rememberTransition` + child animations |
 | Animate size when layout dimensions change | `Modifier.animateContentSize()` |
-| Swap different composable trees in the same slot | `AnimatedContent` or `Crossfade` |
+| Swap different composable trees in one slot | `AnimatedContent` or `Crossfade` |
 | User-driven gesture motion (drag, fling, interruptible) | `Animatable` + coroutine APIs |
 
 ## Rules
 
-1. Prefer `AnimatedVisibility` over `animateFloatAsState(alpha)` when content should unmount — alpha-only fading keeps content in composition and layout.
-2. Animated background color: use `Modifier.drawBehind { drawRect(color.value) }`, not `Modifier.background(animatedColor)`.
-3. `Modifier.animateContentSize()` for expanding/collapsing content — do not hand-roll width/height animations.
-4. Set a distinct `label` on every `animate*AsState` call for tooling and debugging.
-5. When one state drives multiple animated values that must stay in sync, use `rememberTransition` + child animations — not several independent `animate*AsState` calls that can drift:
+1. Use `AnimatedVisibility` when content should unmount after hiding — never `animateFloatAsState(alpha)` for show/hide (alpha-only keeps content in composition and layout).
+2. Animate background color with `Modifier.drawBehind { drawRect(color.value) }`, not `Modifier.background(animatedColor)`.
+3. Use `Modifier.animateContentSize()` for expanding/collapsing — do not animate width/height manually.
+4. Set a distinct `label` string on every `animate*AsState` call.
+5. When one state drives multiple animated values that must stay in sync, use `rememberTransition` — not separate `animate*AsState` calls that can drift:
    ```kotlin
-   val transition = rememberTransition(targetState = phase, label = "phase")
-   val alpha by transition.animateFloat(label = "alpha") { if (it == Phase.Visible) 1f else 0f }
-   val offset by transition.animateDp(label = "offset") { if (it == Phase.Visible) 0.dp else 24.dp }
+   val t = rememberTransition(phase, label = "phase")
+   val alpha by t.animateFloat(label = "alpha") { if (it == Phase.Visible) 1f else 0f }
+   val offset by t.animateDp(label = "offset") { if (it == Phase.Visible) 0.dp else 24.dp }
    ```
-6. `AnimatedContent`: always set `contentKey` to map rich state to visual shape — without it every data refresh triggers a transition:
+6. Set `contentKey` on `AnimatedContent` to map state to visual shape; without it every data refresh triggers a transition:
    ```kotlin
    AnimatedContent(
        targetState = result,
-       contentKey = { when (it) {
-           is Loading -> "loading"; is Success -> "content"; is Error -> "error"
-       } },
-       label = "screen-content",
+       contentKey = { when (it) { is Loading -> 0; is Success -> 1; is Error -> 2 } },
+       label = "result",
    ) { ... }
    ```
-7. `stateIn` values that feed `Modifier.offset` or `Modifier.graphicsLayer` should use block-form (deferred-read) modifiers, not value-form — see `compose-state-deferred-reads`.
+7. Never use `LaunchedEffect` + `Animatable` for a simple target value — use `animate*AsState`.
 
 ## Anti-patterns
 
 | Mistake | Fix |
 |---|---|
-| `animateFloatAsState(alpha)` but expects content to unmount | `AnimatedVisibility` |
-| Three `animateDpAsState` in sync with one enum | One `rememberTransition` |
-| `LaunchedEffect` + `Animatable` for simple target animation | `animate*AsState` |
-| `AnimatedContent(result)` without `contentKey` | Add `contentKey` based on visual shape |
-| Animated color on `Modifier.background` | `drawBehind { drawRect(animatedColor) }` |
+| `animateFloatAsState(alpha)` for show/hide | `AnimatedVisibility` |
+| Three `animateDpAsState` for one enum | One `rememberTransition` with child animations |
+| `LaunchedEffect` + `Animatable` for a target | `animate*AsState` |
+| `AnimatedContent` without `contentKey` | Add `contentKey` based on visual shape |
+| `Modifier.background(animatedColor)` | `Modifier.drawBehind { drawRect(color) }` |
