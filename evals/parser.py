@@ -19,8 +19,8 @@ def parse_skill(path: Path) -> Skill:
 
 
 def find_skill_dirs(skills_root: Path) -> list[Path]:
-    """Return all skill directories (contain SKILL.md) under skills_root."""
-    return sorted(d for d in skills_root.iterdir() if d.is_dir() and (d / "SKILL.md").exists())
+    """Return all skill directories (contain SKILL.md) under skills_root, at any depth."""
+    return sorted(p.parent for p in skills_root.rglob("SKILL.md"))
 
 
 def find_test_cases(skill_path: Path, tests_root: Path | None = None) -> list[TestCase]:
