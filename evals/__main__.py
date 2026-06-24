@@ -64,6 +64,9 @@ def check(
     import json as _json
     from .llm_review import review as llm_review_fn
 
+    _GRADE_EXIT = {"poor": 2, "needs work": 1}
+    max_exit = 0
+
     for skill_path in _resolve_skill_paths(path):
         result = evaluate_tiered(skill_path)
 
@@ -80,10 +83,10 @@ def check(
         else:
             print_tiered_report(result, llm)
 
-        if result.grade == "poor":
-            raise typer.Exit(2)
-        if result.grade == "needs work":
-            raise typer.Exit(1)
+        max_exit = max(max_exit, _GRADE_EXIT.get(result.grade, 0))
+
+    if max_exit:
+        raise typer.Exit(max_exit)
 
 
 @app.command()

@@ -1,0 +1,174 @@
+name: Evaluate Skills
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "evals/**"
+  pull_request:
+    paths:
+      - "skills/**"
+      - "evals/**"
+
+jobs:
+  check:
+    name: Tiered Skill Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv sync
+
+      # ── Detect which skills to evaluate ───────────────────────────────────
+      - name: Resolve skill paths
+        id: paths
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+
+          # If the evaluator itself changed, re-check every skill
+          if git diff --name-only "$BASE" "$GITHUB_SHA" -- evals/ | grep -q .; then
+            echo "scope=all (evals/ changed)" >&2
+            echo "paths=skills/" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Otherwise only check skills whose SKILL.md was added/modified
+          PATHS=$(
+            git diff --name-only --diff-filter=AM "$BASE" "$GITHUB_SHA" -- 'skills/**' \
+              | grep 'SKILL\.md$' \
+              | sed 's|/SKILL\.md||' \
+              | sort -u \
+              | tr '\n' ' '
+          )
+
+          if [ -z "$PATHS" ]; then
+            echo "scope=none" >&2
+            echo "paths=" >> "$GITHUB_OUTPUT"
+          else
+            echo "scope=$PATHS" >&2
+            echo "paths=$PATHS" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Rich output for workflow logs ─────────────────────────────────────
+      - name: Run evaluator (human-readable)
+        if: steps.paths.outputs.paths != ''
+        run: uv run python -m evals check ${{ steps.paths.outputs.paths }}
+        continue-on-error: true  # don't short-circuit before summary step
+
+      # ── JSON output for step summary ──────────────────────────────────────
+      - name: Collect JSON results
+        if: steps.paths.outputs.paths != ''
+        id: json
+        run: |
+          mkdir -p /tmp/eval-results
+          MAX_EXIT=0
+
+          for SKILL_PATH in ${{ steps.paths.outputs.paths }}; do
+            # Expand a directory into individual skill dirs
+            if [ -f "$SKILL_PATH/SKILL.md" ]; then
+              DIRS="$SKILL_PATH"
+            else
+              DIRS=$(find "$SKILL_PATH" -name 'SKILL.md' -exec dirname {} \; | sort -u)
+            fi
+
+            for DIR in $DIRS; do
+              SLUG=$(echo "$DIR" | tr '/' '-')
+              uv run python -m evals check "$DIR" --json \
+                > "/tmp/eval-results/${SLUG}.json" 2>/dev/null
+              CODE=$?
+              [ $CODE -gt $MAX_EXIT ] && MAX_EXIT=$CODE
+            done
+          done
+
+          echo "max_exit=$MAX_EXIT" >> "$GITHUB_OUTPUT"
+
+      # ── Step summary ──────────────────────────────────────────────────────
+      - name: Write step summary
+        if: always() && steps.paths.outputs.paths != ''
+        run: |
+          uv run python - <<'PYEOF'
+          import json, os
+          from pathlib import Path
+
+          results_dir = Path("/tmp/eval-results")
+          if not results_dir.exists():
+              exit(0)
+
+          files = sorted(results_dir.glob("*.json"))
+          if not files:
+              exit(0)
+
+          GRADE_ICON = {"excellent": "✅", "good": "✅", "needs work": "⚠️", "poor": "❌"}
+
+          rows = []
+          all_findings = []
+
+          for f in files:
+              try:
+                  data = json.loads(f.read_text())
+              except Exception:
+                  continue
+
+              name     = data.get("skill_name", f.stem)
+              score    = data.get("score", 0)
+              grade    = data.get("grade", "unknown")
+              findings = data.get("findings", [])
+              errors   = sum(1 for x in findings if x["severity"] == "error")
+              warnings = sum(1 for x in findings if x["severity"] == "warning")
+              icon     = GRADE_ICON.get(grade, "❓")
+
+              rows.append(f"| `{name}` | {score:.0f}/100 | {icon} {grade} | {errors} | {warnings} |")
+              if findings:
+                  all_findings.append((name, findings))
+
+          lines = [
+              "## Skill Evaluation\n",
+              "| Skill | Score | Grade | Errors | Warnings |",
+              "|---|---|---|---|---|",
+              *rows,
+          ]
+
+          if all_findings:
+              lines.append("\n### Findings\n")
+              for name, findings in all_findings:
+                  lines.append(f"**`{name}`**\n")
+                  for f in findings:
+                      sev  = f["severity"].upper()
+                      icon = "🔴" if sev == "ERROR" else "🟡"
+                      lines.append(f"- {icon} `{f['code']}` **{sev}**: {f['message']}")
+                  lines.append("")
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "")
+          output = "\n".join(lines)
+          if summary_path:
+              Path(summary_path).write_text(output)
+          else:
+              print(output)
+          PYEOF
+
+      # ── Final gate ────────────────────────────────────────────────────────
+      - name: Gate on grade
+        if: steps.paths.outputs.paths != ''
+        run: |
+          CODE="${{ steps.json.outputs.max_exit }}"
+          if [ "$CODE" = "2" ]; then
+            echo "::error::One or more skills graded 'poor' — fix errors before merging."
+            exit 2
+          fi
+          if [ "$CODE" = "1" ]; then
+            echo "::warning::One or more skills graded 'needs work'."
+          fi
