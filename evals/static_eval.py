@@ -1,7 +1,15 @@
 from __future__ import annotations
 import json
+import re
 from . import claude_client as cc
 from .models import Skill, StaticResult
+
+
+def _parse_json(text: str) -> dict:
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return json.loads(text)
 
 _JUDGE = "claude-haiku-4-5-20251001"
 
@@ -22,7 +30,7 @@ Return JSON: {{"score": <0.0-1.0>, "issues": ["<issue>", ...]}}""",
         model=_JUDGE,
     )
     try:
-        data = json.loads(result)
+        data = _parse_json(result)
         return float(data["score"]), data.get("issues", [])
     except Exception:
         return 0.5, []
@@ -45,7 +53,7 @@ Return JSON: {{"actionable_fraction": <0.0-1.0>, "issues": ["<issue>", ...]}}"""
         model=_JUDGE,
     )
     try:
-        data = json.loads(result)
+        data = _parse_json(result)
         return float(data["actionable_fraction"]), data.get("issues", [])
     except Exception:
         return 0.5, []
