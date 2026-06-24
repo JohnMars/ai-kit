@@ -4,7 +4,7 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 from rich import box
-from .models import EvalReport
+from .models import EvalReport, TieredResult, LLMReview, Severity
 
 console = Console()
 
@@ -83,4 +83,74 @@ def print_report(report: EvalReport) -> None:
             border_style=c,
         )
     )
+    console.print()
+
+
+# ── Tiered report ─────────────────────────────────────────────────────────────
+
+_TIER_LABELS = {
+    1: "Spec Compliance",
+    2: "Security",
+    3: "Token Efficiency",
+    4: "Effectiveness",
+}
+
+_GRADE_COLOR = {
+    "excellent": "green",
+    "good": "cyan",
+    "needs work": "yellow",
+    "poor": "red",
+}
+
+
+def print_tiered_report(result: TieredResult, llm_review: LLMReview | None = None) -> None:
+    grade_color = _GRADE_COLOR.get(result.grade, "white")
+
+    header = Text()
+    header.append(result.skill_name, style="bold white")
+    header.append(f"  score {result.score:.0f}/100  ", style="dim")
+    header.append(result.grade.upper(), style=f"bold {grade_color}")
+    console.print(Panel(header, title="Tiered Eval", border_style=grade_color))
+
+    # Per-tier summary
+    by_tier: dict[int, list] = {1: [], 2: [], 3: [], 4: []}
+    for f in result.findings:
+        by_tier[f.tier].append(f)
+
+    summary = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+    summary.add_column("Tier", width=30)
+    summary.add_column("Status")
+    for tier_num, label in _TIER_LABELS.items():
+        tier_findings = by_tier[tier_num]
+        errors = sum(1 for f in tier_findings if f.severity == Severity.ERROR)
+        warnings = sum(1 for f in tier_findings if f.severity == Severity.WARNING)
+        if errors:
+            status = f"[red]✗ {errors} error{'s' if errors > 1 else ''}"
+            if warnings:
+                status += f", {warnings} warning{'s' if warnings > 1 else ''}"
+            status += "[/red]"
+        elif warnings:
+            status = f"[yellow]⚠ {warnings} warning{'s' if warnings > 1 else ''}[/yellow]"
+        else:
+            status = "[green]✓ pass[/green]"
+        summary.add_row(f"[dim]Tier {tier_num}[/dim] — {label}", status)
+    console.print(summary)
+
+    # Detailed findings
+    if result.findings:
+        fp_codes = {x["code"] for x in (llm_review.false_positives if llm_review else [])}
+        for f in result.findings:
+            is_fp = f.code in fp_codes
+            sev_style = "red" if f.severity == Severity.ERROR else "yellow"
+            fp_tag = " [dim](likely false positive)[/dim]" if is_fp else ""
+            console.print(f"  [{sev_style}]{f.code} {f.severity.value.upper()}[/{sev_style}]  {f.message}{fp_tag}")
+
+    # LLM review extras
+    if llm_review and llm_review.additional_observations:
+        console.print("\n[dim]LLM observations:[/dim]")
+        for obs in llm_review.additional_observations:
+            sev = obs.get("severity", "info")
+            color = {"error": "red", "warning": "yellow"}.get(sev, "dim")
+            console.print(f"  [{color}]{obs.get('message', '')}[/{color}]")
+
     console.print()

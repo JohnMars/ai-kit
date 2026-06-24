@@ -1,4 +1,5 @@
 from __future__ import annotations
+from enum import Enum
 from pathlib import Path
 from pydantic import BaseModel, Field
 
@@ -36,6 +37,50 @@ class DynamicResult(BaseModel):
     feedback: str
     tokens_used: int
 
+
+# ── Tiered deterministic evaluator ──────────────────────────────────────────
+
+class Severity(str, Enum):
+    ERROR = "error"
+    WARNING = "warning"
+
+
+class Finding(BaseModel):
+    tier: int
+    code: str        # e.g. "T1.01"
+    severity: Severity
+    message: str
+
+
+class TieredResult(BaseModel):
+    skill_name: str
+    findings: list[Finding] = Field(default_factory=list)
+    score: float     # 0–100
+    grade: str       # "excellent" | "good" | "needs work" | "poor"
+
+    @property
+    def errors(self) -> list[Finding]:
+        return [f for f in self.findings if f.severity == Severity.ERROR]
+
+    @property
+    def warnings(self) -> list[Finding]:
+        return [f for f in self.findings if f.severity == Severity.WARNING]
+
+
+# ── LLM review (Phase 2) ─────────────────────────────────────────────────────
+
+class ReviewFinding(BaseModel):
+    code: str
+    reason: str
+
+
+class LLMReview(BaseModel):
+    false_positives: list[ReviewFinding] = Field(default_factory=list)
+    confirmed: list[ReviewFinding] = Field(default_factory=list)
+    additional_observations: list[dict] = Field(default_factory=list)
+
+
+# ── LLM-based eval (legacy) ───────────────────────────────────────────────────
 
 class EvalReport(BaseModel):
     skill: Skill

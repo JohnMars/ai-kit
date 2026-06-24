@@ -9,7 +9,8 @@ from .models import EvalReport
 from .parser import parse_skill, find_skill_dirs, find_test_cases
 from .static_eval import evaluate_static
 from .dynamic_eval import evaluate_dynamic
-from .report import print_report, console
+from .tiered_eval import evaluate_tiered
+from .report import print_report, print_tiered_report, console
 
 app = typer.Typer(
     name="eval-skill",
@@ -51,6 +52,38 @@ def eval(
 
         report = EvalReport(skill=skill, static=static_result, dynamic=dynamic_results)
         print_report(report)
+
+
+@app.command()
+def check(
+    path: Path = typer.Argument(..., help="Skill directory, skills root, or SKILL.md file"),
+    review: bool = typer.Option(False, "--review", "-r", help="Send findings to LLM for false-positive review (Phase 2)"),
+    json_out: bool = typer.Option(False, "--json", help="Print raw JSON result instead of the Rich report"),
+) -> None:
+    """Run the tiered deterministic evaluator (Tiers 1–4) against one or all skills."""
+    import json as _json
+    from .llm_review import review as llm_review_fn
+
+    for skill_path in _resolve_skill_paths(path):
+        result = evaluate_tiered(skill_path)
+
+        llm = None
+        if review:
+            skill = parse_skill(skill_path)
+            llm = llm_review_fn(result, skill.body)
+
+        if json_out:
+            out = result.model_dump()
+            if llm:
+                out["llm_review"] = llm.model_dump()
+            console.print_json(_json.dumps(out, indent=2))
+        else:
+            print_tiered_report(result, llm)
+
+        if result.grade == "poor":
+            raise typer.Exit(2)
+        if result.grade == "needs work":
+            raise typer.Exit(1)
 
 
 @app.command()
